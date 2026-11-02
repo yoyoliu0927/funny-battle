@@ -9,6 +9,9 @@ static var show_hp := true
 static var campaign_level := 0
 
 const MenuUi := preload("res://scripts/menu_ui.gd")
+const IconButton := preload("res://scripts/icon_button.gd")
+const PAUSE_SIZE := 64.0
+const PAUSE_MARGIN := 16.0
 const SHEET_PATH := "res://docs/攻擊模組 - 攻擊模組.csv"
 const STAGE_MIN := 80.0
 const STAGE_MAX := 1200.0
@@ -1436,7 +1439,7 @@ func _build_hud() -> void:
 	_hint = hint
 	_ground_button = Button.new()
 	_ground_button.text = "地形"
-	_ground_button.position = Vector2(24, 620)
+	_ground_button.position = Vector2(PAUSE_MARGIN + PAUSE_SIZE + 12.0, 720.0 - PAUSE_MARGIN - 32.0)
 	_ground_button.size = Vector2(88, 32)
 	_ground_button.focus_mode = Control.FOCUS_NONE
 	_ground_button.pressed.connect(func() -> void:
@@ -1873,10 +1876,12 @@ func _build_flow() -> void:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(root)
-	_pause_button = _flow_button("Pause", 18, true)
+	_pause_button = IconButton.new()
+	_pause_button.shape = "pause"
 	_pause_button.name = "PauseButton"
-	_pause_button.position = Vector2(560, 48)
-	_pause_button.size = Vector2(160, 30)
+	_pause_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	_pause_button.position = Vector2(PAUSE_MARGIN, 720.0 - PAUSE_MARGIN - PAUSE_SIZE)
+	_pause_button.size = Vector2(PAUSE_SIZE, PAUSE_SIZE)
 	_pause_button.pressed.connect(_open_pause)
 	root.add_child(_pause_button)
 	_pause_panel = _flow_panel(root, "PausePanel", "Paused")
@@ -1940,7 +1945,7 @@ func _flow_panel(parent: Control, node_name: String, heading: String) -> Control
 	return panel
 
 
-func _flow_button(text: String, font_size: int, compact: bool = false) -> Button:
+func _flow_button(text: String, font_size: int) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.focus_mode = Control.FOCUS_NONE
@@ -1950,12 +1955,10 @@ func _flow_button(text: String, font_size: int, compact: bool = false) -> Button
 	button.add_theme_color_override("font_color", MenuUi.INK)
 	button.add_theme_color_override("font_hover_color", MenuUi.HOVER_INK)
 	button.add_theme_color_override("font_pressed_color", MenuUi.HOVER_INK)
-	var margin := 0 if compact else 8
-	var border := 3 if compact else 4
-	button.add_theme_stylebox_override("normal", _flow_style(MenuUi.FILL, MenuUi.INK, margin, border))
-	button.add_theme_stylebox_override("hover", _flow_style(MenuUi.HOVER, MenuUi.HOVER_INK, margin, border))
-	button.add_theme_stylebox_override("pressed", _flow_style(MenuUi.HOVER, MenuUi.HOVER_INK, margin, border))
-	button.add_theme_stylebox_override("focus", _flow_style(MenuUi.FILL, MenuUi.INK, margin, border))
+	button.add_theme_stylebox_override("normal", _flow_style(MenuUi.FILL, MenuUi.INK, 8, 4))
+	button.add_theme_stylebox_override("hover", _flow_style(MenuUi.HOVER, MenuUi.HOVER_INK, 8, 4))
+	button.add_theme_stylebox_override("pressed", _flow_style(MenuUi.HOVER, MenuUi.HOVER_INK, 8, 4))
+	button.add_theme_stylebox_override("focus", _flow_style(MenuUi.FILL, MenuUi.INK, 8, 4))
 	return button
 
 

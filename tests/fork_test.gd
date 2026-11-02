@@ -55,7 +55,8 @@ func _check_flow() -> void:
 	DUEL.campaign_level = 1
 	var spikes = scene("res://scenes/spikes.tscn")
 	var pause_button = spikes.get_node("Flow/FlowRoot/PauseButton")
-	check(pause_button.text == "Pause", "Each level has a pause button")
+	check(pause_button.shape == "pause" and pause_button.size.x == pause_button.size.y, "Pause is a square symbol button")
+	check(pause_button.position.x <= 24.0 and pause_button.position.y + pause_button.size.y >= 700.0, "Pause sits in the bottom left corner")
 	spikes._open_pause()
 	var pause_panel = spikes.get_node("Flow/FlowRoot/PausePanel")
 	check(paused and pause_panel.visible, "Pause opens over the battle")

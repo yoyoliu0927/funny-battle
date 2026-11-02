@@ -59,6 +59,9 @@ func _draw() -> void:
 			_draw_circle_button(fill, ink, -1.0)
 		"tutorial", "level":
 			_draw_box(fill, ink)
+		"pause":
+			_draw_box(fill, ink)
+			_draw_pause(ink)
 		"lock":
 			_draw_box(MenuUi.FILL, MenuUi.LOCKED)
 			_draw_lock()
@@ -81,6 +84,17 @@ func _draw_box(fill: Color, ink: Color) -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), fill, true)
 	var inset := MenuUi.STROKE * 0.5
 	draw_rect(Rect2(inset, inset, size.x - MenuUi.STROKE, size.y - MenuUi.STROKE), ink, false, MenuUi.STROKE)
+
+
+func _draw_pause(ink: Color) -> void:
+	var unit := minf(size.x, size.y)
+	var bar_w := unit * 0.12
+	var bar_h := unit * 0.38
+	var gap := unit * 0.08
+	var center := size * 0.5
+	var top := center.y - bar_h * 0.5
+	draw_rect(Rect2(center.x - gap - bar_w, top, bar_w, bar_h), ink, true)
+	draw_rect(Rect2(center.x + gap, top, bar_w, bar_h), ink, true)
 
 
 func _draw_lock() -> void:
