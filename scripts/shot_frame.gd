@@ -7,7 +7,7 @@ var _font: SystemFont
 func _ready() -> void:
 	z_index = 3
 	_font = SystemFont.new()
-	_font.font_names = PackedStringArray(["Microsoft JhengHei UI", "Microsoft JhengHei", "Microsoft YaHei"])
+	_font.font_names = PackedStringArray(["Microsoft JhengHei UI", "Microsoft JhengHei", "Microsoft YaHei", "PingFang TC", "Heiti TC", "Noto Sans CJK TC"])
 
 
 func _process(_delta: float) -> void:

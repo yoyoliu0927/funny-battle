@@ -96,6 +96,29 @@ var out := false
 var goal := false
 var show_hp := true
 
+enum SpringShot { NONE, ESCAPING, READY }
+var spring_shot: SpringShot = SpringShot.NONE
+var spring_shot_time := 0.0
+var spring_takeoff_x := 0.0
+
+
+func clear_spring_shot() -> void:
+	spring_shot = SpringShot.NONE
+	spring_shot_time = 0.0
+
+
+func spring_shot_ready() -> bool:
+	return spring_shot == SpringShot.READY and spring_shot_time > 0.0
+
+
+func launch_retreat(direction: float, horizontal: float, upward: float, gravity: float) -> void:
+	launch_arc(direction * horizontal, upward, gravity, false, 0.06)
+	spring_takeoff_x = position.x
+	spring_shot = SpringShot.ESCAPING
+	# 後撤時仍面向對手，落地才拔槍，不在空中偷結算傷害。
+	face_right = direction < 0.0
+	_sprite.flip_h = not face_right
+
 
 func _ready() -> void:
 	_sprite = Sprite2D.new()
@@ -196,6 +219,7 @@ func go(anim_name: String, target_x: float, move_time: float) -> bool:
 func react(anim_name: String, target_x: float, _move_time: float = 0.2, _hold: float = 0.5, refresh: bool = false, stun: float = -1.0) -> bool:
 	if reacting and not refresh:
 		return false
+	clear_spring_shot()
 	_plant()
 	slipping = false
 	use_module = false
@@ -210,6 +234,7 @@ func react(anim_name: String, target_x: float, _move_time: float = 0.2, _hold: f
 
 
 func relax() -> void:
+	clear_spring_shot()
 	lock = 0.0
 	busy = 0.0
 	reacting = false
@@ -267,6 +292,7 @@ func leave_active(active_left: float) -> void:
 func begin_slip(dir: float, distance: float, time: float) -> void:
 	if airborne:
 		return
+	clear_spring_shot()
 	chain = ""
 	sheet_move = {}
 	use_module = false
@@ -283,6 +309,12 @@ func begin_slip(dir: float, distance: float, time: float) -> void:
 
 
 func launch_arc(hx: float, hy: float, gravity: float, big: bool, recover: float) -> void:
+	clear_spring_shot()
+	# 彈射接管位移，不能在落地後繼續舊的走路／受擊插值而瞬移回去。
+	_slide = 1.0
+	_from = position.x
+	_to = position.x
+	_prev_x = position.x
 	if ground_y == 0.0:
 		ground_y = position.y
 	airborne = true
@@ -387,6 +419,10 @@ func _process(delta: float) -> void:
 		_prev_x = position.x
 		queue_redraw()
 		return
+	if spring_shot == SpringShot.READY:
+		spring_shot_time = maxf(spring_shot_time - delta, 0.0)
+		if spring_shot_time <= 0.0 or out:
+			clear_spring_shot()
 	if airborne:
 		_fly(delta)
 		queue_redraw()
@@ -466,6 +502,9 @@ func _fly(delta: float) -> void:
 	var did_hit := fall_spent
 	position.y = ground_y
 	airborne = false
+	_from = position.x
+	_to = position.x
+	_slide = 1.0
 	big_launch = false
 	fall_armed = false
 	fall_age = 0.0
@@ -473,6 +512,12 @@ func _fly(delta: float) -> void:
 	vy = 0.0
 	fall_spent = false
 	just_landed = true
+	if spring_shot == SpringShot.ESCAPING:
+		if absf(position.x - spring_takeoff_x) >= 64.0:
+			spring_shot = SpringShot.READY
+			spring_shot_time = 1.2
+		else:
+			clear_spring_shot()
 	land_big = was_big
 	land_hit = did_hit
 	busy = land_lag

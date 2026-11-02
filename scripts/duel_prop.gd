@@ -9,6 +9,10 @@ var spent := false
 var life := 2.4
 var armed := true
 var time_scale := 1.0
+var retreat := false
+var launch_dir := -1.0
+var arm_delay := 0.12
+var _arm_left := 0.0
 
 
 func _ready() -> void:
@@ -16,12 +20,18 @@ func _ready() -> void:
 		z_index = 6
 	elif kind == "spring":
 		z_index = 2
+		if retreat:
+			_arm_left = arm_delay
+			armed = _arm_left <= 0.0
 	else:
 		z_index = 1
 
 
 func _process(delta: float) -> void:
 	delta *= time_scale
+	if _arm_left > 0.0:
+		_arm_left = maxf(_arm_left - delta, 0.0)
+		armed = _arm_left <= 0.0
 	if kind == "stop":
 		if wind > 0.0:
 			wind -= delta
@@ -54,12 +64,19 @@ func _draw() -> void:
 		draw_colored_polygon(peel, Color(0.98, 0.84, 0.12, fade))
 		draw_polyline(PackedVector2Array([peel[0], peel[1], peel[2], peel[3], peel[0]]), Color(0.08, 0.08, 0.08, fade), 3.0, true)
 	elif kind == "spring":
-		var ink := Color(0.08, 0.08, 0.08)
+		var ink := Color(0.25, 0.94, 0.88) if retreat else Color(0.85, 0.88, 0.92)
 		draw_line(Vector2(-26, 10), Vector2(-13, -12), ink, 5.0)
 		draw_line(Vector2(-13, -12), Vector2(0, 10), ink, 5.0)
 		draw_line(Vector2(0, 10), Vector2(13, -12), ink, 5.0)
 		draw_line(Vector2(13, -12), Vector2(26, 10), ink, 5.0)
 		draw_line(Vector2(-30, 12), Vector2(30, 12), Color(0.35, 0.38, 0.42), 4.0)
+		if retreat:
+			var tip := Vector2(launch_dir * 36.0, -22)
+			draw_line(Vector2(-launch_dir * 18.0, -22), tip, ink, 3.0)
+			draw_line(tip, tip + Vector2(-launch_dir * 10.0, -7), ink, 3.0)
+			draw_line(tip, tip + Vector2(-launch_dir * 10.0, 7), ink, 3.0)
+			if not armed:
+				draw_arc(Vector2(0, -2), 40, -PI, -PI + PI * (1.0 - _arm_left / maxf(arm_delay, 0.001)), 20, ink, 2.0)
 	else:
 		var pulse := 0.55 + 0.45 * absf(sin(Time.get_ticks_msec() * 0.012))
 		var ink := Color(0.55, 0.82, 1.0, 0.18 + 0.2 * pulse)

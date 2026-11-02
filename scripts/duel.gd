@@ -1,5 +1,7 @@
 extends Node2D
 
+signal spring_counter_fired(shooter: Duelist, target: Duelist, hit: bool)
+
 static var qte := false
 static var brawl := false
 static var brawl_count := 4
@@ -23,6 +25,7 @@ const PREVIEW_NOTES := {
 	"香蕉滑鏟": "朝對方跑、距離超過 140 時踩到。沿著跑的方向滑鏟，不會變成滑倒。",
 	"香蕉滑倒": "距離不超過 140，或不是朝對方跑。人直接滑倒；站著踩則什麼都不會發生。",
 	"彈簧": "踩到才彈。站著是小跳；跑著或出招時是大拋。大拋上升收膝，到最高點才踢出。",
+	"彈簧開火": "後撤彈簧把角色往敵人反方向彈開。落地後，距離在 140 到 360、雙方高度接近時開一槍。不需要時停；受擊會打斷機會。",
 	"時停": "放下先亮圈。圈收起來時還站在裡面的人才定住。另一人在 90 到 250 會開火，250 到 460 會蓄力。",
 }
 
@@ -57,6 +60,7 @@ var _bar_head: ColorRect
 var _cast_buttons: Dictionary = {}
 const _STAGE := preload("res://scripts/stage_edit.gd")
 const _RACK := preload("res://scripts/tool_rack.gd")
+const _SPRING_FX := preload("res://scripts/spring_shot_fx.gd")
 const TOOL_COOL: Array[float] = [1.6, 2.0, 2.4]
 
 var _beam_was := false
@@ -67,6 +71,17 @@ var _count_button: Button
 var _extras: Array[Duelist] = []
 var _goal: Duelist
 var _brawl_over := false
+var _spring_retreat := true
+var _spring_mode_button: Button
+var _practice_button: Button
+var _counter_label: Label
+var _counter_notice := ""
+var _counter_notice_time := 0.0
+var _spring_practice := false
+var _practice_started := false
+var _practice_complete := false
+var _practice_previous_pace := SLOW
+var _practice_names := PackedStringArray()
 
 @onready var left: Duelist = $Left
 @onready var right: Duelist = $Right
@@ -86,6 +101,8 @@ func _ready() -> void:
 	if brawl and not qte:
 		_open_brawl()
 	_apply_hp_flags()
+	if not qte and not brawl and OS.get_cmdline_user_args().has("--spring-practice"):
+		_start_spring_practice()
 
 
 func _draw() -> void:
@@ -98,6 +115,83 @@ func _draw() -> void:
 		return
 	for body in _bodies():
 		_draw_beam(body)
+		_draw_spring_aim(body)
+	if not _preview and _tool == 1 and _spring_retreat and not _stage.editing:
+		_draw_spring_placement()
+	if _spring_practice and not _practice_started:
+		draw_arc(left.position + Vector2(0, -4), 44, 0, TAU, 40, Color(0.3, 1, 0.88, 0.8), 3.0)
+		draw_line(left.position + Vector2(-36, 6), left.position + Vector2(36, 6), Color(0.3, 1, 0.88), 4.0)
+
+
+func _draw_spring_aim(body: Duelist) -> void:
+	if not body.spring_shot_ready() and not (body.use_module and str(body.sheet_move.get("id", "")) == "彈簧開火"):
+		return
+	var target := _other(body)
+	if target.out:
+		return
+	var a := body.chest()
+	var b := target.chest()
+	var in_range := _spring_can_shoot(body, target)
+	var ink := Color(0.3, 1.0, 0.88, 0.7) if in_range else Color(1.0, 0.73, 0.3, 0.65)
+	draw_dashed_line(a, b, ink, 1.5, 9.0)
+	for side in [-1.0, 1.0]:
+		draw_line(b + Vector2(side * 22, -14), b + Vector2(side * 22, 14), ink, 2.0)
+		draw_line(b + Vector2(side * 22, -14), b + Vector2(side * 12, -14), ink, 2.0)
+		draw_line(b + Vector2(side * 22, 14), b + Vector2(side * 12, 14), ink, 2.0)
+	draw_arc(a, 28, -PI * 0.5, -PI * 0.5 + TAU * clampf(body.spring_shot_time / 1.2, 0, 1), 32, ink, 2.0)
+
+
+func _draw_spring_placement() -> void:
+	var at := get_global_mouse_position()
+	if at.y < 260.0 or at.y > 590.0:
+		return
+	var spot := _prop_at("spring", clampf(at.x, STAGE_MIN, STAGE_MAX), at.y)
+	var body := _nearest_body(spot + Vector2(0, 18))
+	var dir := _retreat_direction(body, _other(body))
+	var ink := Color(0.3, 1.0, 0.88, 0.55)
+	var tip := spot + Vector2(dir * 86, -30)
+	draw_arc(spot, 35, 0, TAU, 32, ink, 1.5)
+	draw_line(spot, tip, ink, 2.5)
+	draw_line(tip, tip + Vector2(-dir * 13, -3), ink, 2.5)
+	draw_line(tip, tip + Vector2(-dir * 8, 11), ink, 2.5)
+
+
+func _nearest_body(at: Vector2) -> Duelist:
+	var nearest := left
+	var best := INF
+	for body in _bodies():
+		if body.out:
+			continue
+		var distance := body.position.distance_squared_to(at)
+		if distance < best:
+			best = distance
+			nearest = body
+	return nearest
+
+
+func _retreat_direction(body: Duelist, target: Duelist) -> float:
+	var gap := body.position.x - target.position.x
+	return signf(gap) if absf(gap) > 1.0 else (-1.0 if body.face_right else 1.0)
+
+
+func _spring_can_shoot(body: Duelist, target: Duelist) -> bool:
+	return not target.out and not target.airborne and absf(body.position.y - target.position.y) <= 56.0 and _band(absf(body.position.x - target.position.x), "彈簧開火")
+
+
+func _spring_fx(kind: String, origin: Vector2, end: Vector2, direction: float, hit: bool = false) -> void:
+	var fx := _SPRING_FX.new()
+	fx.kind = kind
+	fx.origin = origin
+	fx.end = end
+	fx.direction = direction
+	fx.hit = hit
+	fx.pace = _pace
+	add_child(fx)
+
+
+func _counter_message(message: String, seconds: float = 2.0) -> void:
+	_counter_notice = message
+	_counter_notice_time = seconds
 
 
 func _beam_on(body: Duelist) -> bool:
@@ -121,6 +215,8 @@ func _draw_beam(body: Duelist) -> void:
 
 
 func _process(delta: float) -> void:
+	if _counter_notice_time > 0.0:
+		_counter_notice_time = maxf(_counter_notice_time - delta * _pace, 0.0)
 	if _big_cd > 0.0:
 		_big_cd = maxf(_big_cd - delta, 0.0)
 	for i in _cool.size():
@@ -135,6 +231,10 @@ func _process(delta: float) -> void:
 		_check_props()
 		if _preview:
 			_tick_preview()
+			if _preview_id == "彈簧開火" and left.can_act() and left.spring_shot_ready():
+				_think_open(left, right)
+		elif _spring_practice:
+			_tick_spring_practice()
 		elif brawl:
 			_think_brawl()
 		else:
@@ -165,10 +265,11 @@ func _process(delta: float) -> void:
 		if _beam_on(body):
 			beam = true
 			break
-	if beam or _beam_was:
+	if not qte or beam or _beam_was:
 		queue_redraw()
 	_beam_was = beam
 	_refresh_hint()
+	_refresh_counter_hud()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -182,13 +283,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif not qte and event.keycode == KEY_1:
 			_tool = 0
 		elif not qte and event.keycode == KEY_2:
-			_tool = 1
+			pick_tool(1)
+			if event.shift_pressed and not _preview:
+				_toggle_spring_mode()
 		elif not qte and event.keycode == KEY_3:
 			_tool = 2
 		elif not qte and event.keycode == KEY_H:
 			_toggle_hp()
 		elif not qte and not brawl and event.keycode == KEY_TAB:
 			_set_preview(not _preview)
+		elif not qte and not brawl and event.keycode == KEY_P:
+			_toggle_spring_practice()
 		elif event.keycode == KEY_G and _stage != null:
 			_set_ground_edit(not _stage.editing)
 		elif event.keycode == KEY_T and _stage != null and _stage.editing:
@@ -204,7 +309,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif _stage != null and _stage.editing and event is InputEventMouseMotion:
 		_stage.drag(get_global_mouse_position())
 	elif not qte and not _preview and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_place(get_global_mouse_position())
+		# 使用按下當刻的位置，避免事件排隊期間游標移動讓道具落在別處。
+		var click := make_input_local(event) as InputEventMouseButton
+		_place(click.position)
 
 
 func _restart() -> void:
@@ -213,6 +320,10 @@ func _restart() -> void:
 	_show_preview(false)
 	for node in get_tree().get_nodes_in_group("duel_prop"):
 		node.queue_free()
+	for node in get_tree().get_nodes_in_group("spring_shot_fx"):
+		node.queue_free()
+	_counter_notice = ""
+	_counter_notice_time = 0.0
 	_phase = 0
 	_flash_left = 0.0
 	_spoiled = false
@@ -241,6 +352,96 @@ func _restart() -> void:
 	_title.text = "對峙"
 	if brawl and _goal != null:
 		_title.text = "讓%s贏" % _goal.display_name
+	if _spring_practice:
+		_setup_spring_practice()
+
+
+func _toggle_spring_mode() -> void:
+	if _spring_practice:
+		return
+	_spring_retreat = not _spring_retreat
+	_tool = 1
+	_counter_message("後撤彈簧：拉開距離，落地開火" if _spring_retreat else "拋高彈簧：升空後使出下落攻擊")
+
+
+func _toggle_spring_practice() -> void:
+	if not _spring_practice:
+		_start_spring_practice()
+		return
+	_spring_practice = false
+	_pace = _practice_previous_pace
+	if _practice_names.size() == 2:
+		left.display_name = _practice_names[0]
+		right.display_name = _practice_names[1]
+	_restart()
+
+
+func _start_spring_practice() -> void:
+	if not _spring_practice:
+		_practice_previous_pace = _pace
+		_practice_names = PackedStringArray([left.display_name, right.display_name])
+	_spring_practice = true
+	_pace = NORMAL
+	_spring_retreat = true
+	_restart()
+
+
+func _setup_spring_practice() -> void:
+	_practice_started = false
+	_practice_complete = false
+	left.position = Vector2(600, 548)
+	right.position = Vector2(690, 548)
+	_stand(left)
+	_stand(right)
+	left.relax()
+	right.relax()
+	left.display_name = "我方 · 藍甲"
+	right.display_name = "敵方 · 卸甲"
+	_tool = 1
+	_apply_pace()
+	_title.text = "後撤一步，換你開火"
+
+
+func _tick_spring_practice() -> void:
+	if not _practice_started or _practice_complete:
+		return
+	_think_open(left, right)
+	_think_open(right, left)
+	if left.spring_shot == Duelist.SpringShot.NONE and str(left.sheet_move.get("id", "")) != "彈簧開火":
+		_practice_complete = true
+		_title.text = "射擊機會中斷"
+		_counter_message("邊緣、受擊或射程不足會失去機會。按 R 立即再試。", -1.0)
+
+
+func _refresh_counter_hud() -> void:
+	if _spring_mode_button != null:
+		_spring_mode_button.visible = not qte and not _preview and _tool == 1
+		_spring_mode_button.disabled = _spring_practice
+		_spring_mode_button.text = "彈簧：後撤開火" if _spring_retreat else "彈簧：拋高下落"
+	if _practice_button != null:
+		_practice_button.visible = not qte and not brawl and not _preview
+		_practice_button.text = "離開練習 [P]" if _spring_practice else "彈簧開火練習 [P]"
+	if _counter_label == null:
+		return
+	_counter_label.visible = not qte and not _preview and not _stage.editing
+	var message := ""
+	if _counter_notice_time > 0.0 or _counter_notice_time < 0.0:
+		message = _counter_notice
+	elif _spring_practice and not _practice_started:
+		message = "點我方腳下的青色光圈放彈簧。踩到後撤，落地自動開火。"
+	else:
+		for body in _bodies():
+			if body.spring_shot == Duelist.SpringShot.ESCAPING:
+				message = "後撤中  →  拉開距離  →  落地開火"
+				break
+			if body.spring_shot_ready():
+				var target := _other(body)
+				var distance := int(absf(body.position.x - target.position.x))
+				message = "射擊窗口  ·  距離 %d / 140–360" % distance
+				break
+		if message == "" and _tool == 1 and _spring_retreat:
+			message = "2 選彈簧，點角色腳下或行進路線。青色箭頭是後撤方向。"
+	_counter_label.text = message
 
 
 func _think(body: Duelist, other: Duelist) -> void:
@@ -649,11 +850,15 @@ func _place(at: Vector2) -> void:
 		prop.radius = float(row["range"])
 		prop.position = _prop_at("stop", x, at.y)
 	elif _tool == 1 and _items.has("彈簧"):
-		var row: Dictionary = _items["彈簧"]
+		var row: Dictionary = _items["後撤彈簧"] if _spring_retreat and _items.has("後撤彈簧") else _items["彈簧"]
 		prop.kind = "spring"
+		prop.retreat = _spring_retreat
+		prop.arm_delay = float(row["startup"])
 		prop.radius = float(row["range"])
 		prop.life = 3.2
 		prop.position = _prop_at("spring", x, at.y)
+		var nearby := _nearest_body(prop.position + Vector2(0, 18))
+		prop.launch_dir = _retreat_direction(nearby, _other(nearby))
 	elif _items.has("香蕉"):
 		var row: Dictionary = _items["香蕉"]
 		prop.kind = "peel"
@@ -685,6 +890,8 @@ func _check_props() -> void:
 			if who.airborne or who.frozen > 0.0:
 				continue
 			if absf(who.position.x - prop.position.x) > prop.radius:
+				continue
+			if prop.retreat and absf(who.position.y - (prop.position.y + 18.0)) > 28.0:
 				continue
 			if prop.kind == "peel" and _try_peel(who, prop):
 				break
@@ -725,6 +932,19 @@ func _try_peel(body: Duelist, prop: DuelProp) -> bool:
 func _try_spring(body: Duelist, prop: DuelProp) -> bool:
 	if not _items.has("彈簧"):
 		return false
+	if body.out or prop.is_queued_for_deletion():
+		return false
+	if prop.retreat and _items.has("後撤彈簧"):
+		var retreat_row: Dictionary = _items["後撤彈簧"]
+		var target := _other(body)
+		var away := _retreat_direction(body, target)
+		body.launch_retreat(away, float(retreat_row["hop_x"]), float(retreat_row["hop_y"]), float(retreat_row["gravity"]))
+		_spring_fx("launch", body.position, body.position, away)
+		prop.consume()
+		_title.text = "拉開距離"
+		if _spring_practice and body == left:
+			_practice_started = true
+		return true
 	var row: Dictionary = _items["彈簧"]
 	var fast := absf(body.vx) >= float(row["speed_min"]) or body.use_module
 	var dir := signf(body.vx) if absf(body.vx) > 20.0 else (1.0 if body.face_right else -1.0)
@@ -773,11 +993,38 @@ func _resolve_modules() -> void:
 		var attacker := swing["body"] as Duelist
 		var m: Dictionary = swing["move"]
 		var defender := _other(attacker)
+		if str(m.get("id", "")) == "彈簧開火":
+			_resolve_spring_shot(attacker, defender, m)
+			continue
 		if not _facing_hit(attacker, defender, float(m["range"])):
 			attacker.chain = ""
 			_title.text = "打空"
 			continue
 		_land_hit(attacker, defender, m)
+
+
+func _resolve_spring_shot(attacker: Duelist, defender: Duelist, move: Dictionary) -> void:
+	# 在槍口影格才檢查射程、朝向與高度，跳開不代表保證命中。
+	var hit := _spring_can_shoot(attacker, defender) and _facing_hit(attacker, defender, float(move["range"]))
+	var facing := 1.0 if attacker.face_right else -1.0
+	var muzzle := attacker.chest() + Vector2(facing * 54.0, -8.0)
+	var end := Vector2(defender.position.x, muzzle.y) if hit else muzzle + Vector2(facing * float(move["range"]), 0)
+	_spring_fx("shot", muzzle, end, facing, hit)
+	if hit:
+		_land_hit(attacker, defender, move)
+		# 小幅後座力只作用於貼圖，不改變命中用的角色位置。
+		var kick := create_tween()
+		kick.tween_property(attacker._sprite, "offset:x", -facing * 2.0, 0.035)
+		kick.tween_property(attacker._sprite, "offset:x", 0.0, 0.12)
+		_counter_message("彈開  →  拉開射程  →  後撤反擊命中！")
+	else:
+		attacker.chain = ""
+		_counter_message("開火落空：對手離開射程或改變了高度。")
+	_title.text = "後撤反擊！" if hit else "射擊落空"
+	if _spring_practice and attacker == left:
+		_practice_complete = true
+		_counter_message("成功！你用彈簧創造了射擊機會。按 R 再試，P 回對打。" if hit else "對手避開了這一槍。按 R 再試，P 回對打。", -1.0)
+	spring_counter_fired.emit(attacker, defender, hit)
 
 
 func _resolve_falls() -> void:
@@ -826,7 +1073,11 @@ func _think_open(body: Duelist, other: Duelist) -> void:
 func _pick(body: Duelist, other: Duelist) -> String:
 	if _moves.is_empty():
 		return ""
+	if other.out:
+		return ""
 	var dist := absf(body.position.x - other.position.x)
+	if body.spring_shot_ready() and _spring_can_shoot(body, other):
+		return "彈簧開火"
 	if other.slipping and _band(dist, "遠距離追擊"):
 		return "遠距離追擊"
 	if other.frozen > 0.0:
@@ -867,6 +1118,8 @@ func _chain_ok(body: Duelist, other: Duelist, id: String) -> bool:
 func _play_module(body: Duelist, other: Duelist, id: String) -> void:
 	if not _moves.has(id):
 		return
+	if id == "彈簧開火":
+		body.clear_spring_shot()
 	var m: Dictionary = _moves[id]
 	var gap := other.position.x - body.position.x
 	var dist := absf(gap)
@@ -896,7 +1149,7 @@ func _play_module(body: Duelist, other: Duelist, id: String) -> void:
 	body.start_module(anim, dest, busy, move_time, float(m["startup"]), follow)
 	if id == "蓄力":
 		body.shot_frame = 2
-	elif id == "遠距離普攻":
+	elif id == "遠距離普攻" or id == "彈簧開火":
 		body.shot_frame = 1
 	else:
 		body.shot_frame = -1
@@ -965,7 +1218,7 @@ func _move_title(id: String) -> String:
 			return "普通攻擊"
 		"滑鏟":
 			return "滑鏟"
-		"遠距離普攻":
+		"遠距離普攻", "彈簧開火":
 			return "開火"
 		"蓄力":
 			return "蓄力"
@@ -1112,7 +1365,7 @@ func _build_hud() -> void:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var font := SystemFont.new()
-	font.font_names = PackedStringArray(["Microsoft JhengHei UI", "Microsoft JhengHei", "Microsoft YaHei"])
+	font.font_names = PackedStringArray(["Microsoft JhengHei UI", "Microsoft JhengHei", "Microsoft YaHei", "PingFang TC", "Heiti TC", "Noto Sans CJK TC"])
 	var theme := Theme.new()
 	theme.default_font = font
 	theme.default_font_size = 20
@@ -1178,6 +1431,29 @@ func _build_hud() -> void:
 	root.add_child(_prompt)
 	_build_cast(root)
 	_build_preview(root)
+	if not qte:
+		_spring_mode_button = Button.new()
+		_spring_mode_button.position = Vector2(788, 650)
+		_spring_mode_button.size = Vector2(210, 40)
+		_spring_mode_button.focus_mode = Control.FOCUS_NONE
+		_spring_mode_button.tooltip_text = "切換後撤開火／拋高下落。Shift+2 也可切換。"
+		_spring_mode_button.pressed.connect(_toggle_spring_mode)
+		root.add_child(_spring_mode_button)
+		_counter_label = Label.new()
+		_counter_label.position = Vector2(160, 174)
+		_counter_label.size = Vector2(960, 50)
+		_counter_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_counter_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_counter_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_counter_label.add_theme_font_size_override("font_size", 20)
+		_counter_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.89))
+		root.add_child(_counter_label)
+		_practice_button = Button.new()
+		_practice_button.position = Vector2(394, 118)
+		_practice_button.size = Vector2(210, 36)
+		_practice_button.focus_mode = Control.FOCUS_NONE
+		_practice_button.pressed.connect(_toggle_spring_practice)
+		root.add_child(_practice_button)
 
 
 func _build_cast(root: Control) -> void:
@@ -1288,6 +1564,7 @@ func _build_preview(root: Control) -> void:
 		PackedStringArray(["蕉滑鏟", "香蕉滑鏟"]),
 		PackedStringArray(["蕉滑倒", "香蕉滑倒"]),
 		PackedStringArray(["彈簧", "彈簧"]),
+		PackedStringArray(["彈簧開火", "彈簧開火"]),
 		PackedStringArray(["時停", "時停"]),
 	]
 	for i in specs.size():
@@ -1345,6 +1622,8 @@ func _set_preview(on: bool) -> void:
 	if not on:
 		_restart()
 		return
+	if _spring_practice:
+		_toggle_spring_practice()
 	_preview = true
 	_preview_id = ""
 	_show_preview(true)
@@ -1411,6 +1690,17 @@ func _preview_play(id: String) -> void:
 			_park(220.0)
 			_drop_demo("spring", left.position.x + 70.0)
 			left.go("walk", right.position.x - 90.0, 0.45)
+		"彈簧開火":
+			_park(90.0)
+			var prop := DuelProp.new()
+			prop.kind = "spring"
+			prop.retreat = true
+			prop.arm_delay = float((_items["後撤彈簧"] as Dictionary)["startup"])
+			prop.launch_dir = -1.0
+			prop.position = _prop_at("spring", left.position.x, left.position.y)
+			prop.time_scale = _pace
+			add_child(prop)
+			prop.add_to_group("duel_prop")
 		"時停":
 			_park(320.0)
 			_drop_demo("stop", right.position.x)
