@@ -6,7 +6,9 @@ static var qte := false
 static var brawl := false
 static var brawl_count := 4
 static var show_hp := true
+static var campaign_level := 0
 
+const MenuUi := preload("res://scripts/menu_ui.gd")
 const SHEET_PATH := "res://docs/攻擊模組 - 攻擊模組.csv"
 const STAGE_MIN := 80.0
 const STAGE_MAX := 1200.0
@@ -35,6 +37,11 @@ var _items: Dictionary = {}
 var _shake := 0.0
 var _title: Label
 var _hint: Label
+var _pause_button: Button
+var _pause_panel: Control
+var _success_panel: Control
+var _next_button: Button
+var _success_open := false
 var _prompt: Label
 var _wash: ColorRect
 var _tool := 0
@@ -277,7 +284,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.keycode == KEY_R:
 			_restart()
 		elif event.keycode == KEY_ESCAPE:
-			get_tree().change_scene_to_file("res://scenes/main.tscn")
+			get_tree().change_scene_to_file("res://scenes/levels.tscn")
 		elif qte and event.keycode == KEY_F:
 			_press_parry()
 		elif not qte and event.keycode == KEY_1:
@@ -315,6 +322,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _restart() -> void:
+	_dismiss_flow()
 	_preview = false
 	_preview_id = ""
 	_show_preview(false)
@@ -1208,6 +1216,8 @@ func _land_hit(attacker: Duelist, defender: Duelist, m: Dictionary) -> void:
 		attacker.leave_active(float(m["active"]))
 	if defender.out:
 		_title.text = "%s倒下" % defender.display_name
+		if defender == right and not left.out:
+			offer_success()
 	else:
 		_title.text = "擊倒" if pose == "down" else "打中"
 
@@ -1337,15 +1347,15 @@ func _press_parry() -> void:
 func _refresh_hint() -> void:
 	if _hint == null:
 		return
-	var next := "點圖標選道具，再點地面放下    Tab 拆開看    H 血量    G 地形    Esc 回節目    R 重看"
+	var next := "點圖標選道具，再點地面放下    Tab 拆開看    H 血量    G 地形    Esc 返回    R 重看"
 	if qte:
-		next = "卸甲的大招會先亮橙圈。金圈閃起時按 F 格開，太早按會落空。    Esc 回節目    R 重看"
+		next = "卸甲的大招會先亮橙圈。金圈閃起時按 F 格開，太早按會落空。    Esc 返回    R 重看"
 	elif brawl:
-		next = "讓黃髮贏。點地面放道具。H 開關血量。R 重開。Esc 回節目。"
+		next = "讓黃髮贏。點地面放道具。H 開關血量。R 重開。Esc 返回。"
 	elif _stage != null and _stage.editing:
 		next = "拖空白畫長條，拖長條可移動。點長條上的標籤或按 T，決定能不能傾斜；能傾斜才拖左右端改高低。右鍵刪。G 離開。"
 	elif _preview:
-		next = "選上面的招單獨看。Tab 回到對打。    Esc 回節目"
+		next = "選上面的招單獨看。Tab 回到對打。    Esc 返回"
 	if _hint.text != next:
 		_hint.text = next
 	if _rack == null:
@@ -1605,6 +1615,7 @@ func _build_preview(root: Control) -> void:
 	_bar_active = _phase_block(root, Color(0.42, 0.16, 0.12))
 	_bar_recover = _phase_block(root, Color(0.18, 0.24, 0.34))
 	_bar_head = _phase_block(root, Color(0.96, 0.94, 0.88))
+	_build_flow()
 
 
 func _phase_block(root: Control, ink: Color) -> ColorRect:
@@ -1827,6 +1838,202 @@ func _paint_bar(shown: Dictionary, age: float, phase: String) -> void:
 	_bar_recover.color = Color(0.45, 0.62, 0.86) if phase == "後搖" else Color(0.18, 0.24, 0.34)
 
 
+func _build_flow() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "Flow"
+	layer.layer = 40
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(layer)
+	var root := Control.new()
+	root.name = "FlowRoot"
+	root.process_mode = Node.PROCESS_MODE_ALWAYS
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(root)
+	_pause_button = _flow_button("Pause", 18, true)
+	_pause_button.name = "PauseButton"
+	_pause_button.position = Vector2(560, 48)
+	_pause_button.size = Vector2(160, 30)
+	_pause_button.pressed.connect(_open_pause)
+	root.add_child(_pause_button)
+	_pause_panel = _flow_panel(root, "PausePanel", "Paused")
+	var resume := _flow_button("Return to battle", 28)
+	resume.name = "PauseResume"
+	resume.pressed.connect(_return_to_battle)
+	_pause_panel.add_child(resume)
+	var pause_menu := _flow_button("Back to menu", 28)
+	pause_menu.name = "PauseMenu"
+	pause_menu.pressed.connect(_back_to_menu)
+	_pause_panel.add_child(pause_menu)
+	_place_flow_buttons(_pause_panel, [resume, pause_menu])
+	_success_panel = _flow_panel(root, "SuccessPanel", "Success")
+	_next_button = _flow_button("Next level", 28)
+	_next_button.name = "NextLevel"
+	_next_button.pressed.connect(_next_level)
+	_success_panel.add_child(_next_button)
+	var success_menu := _flow_button("Back to menu", 28)
+	success_menu.name = "SuccessMenu"
+	success_menu.pressed.connect(_back_to_menu)
+	_success_panel.add_child(success_menu)
+	var catcher := FlowCatcher.new()
+	catcher.name = "FlowCatcher"
+	catcher.host = self
+	catcher.process_mode = Node.PROCESS_MODE_ALWAYS
+	catcher.set_anchors_preset(Control.PRESET_FULL_RECT)
+	catcher.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(catcher)
+
+
+func _flow_panel(parent: Control, node_name: String, heading: String) -> Control:
+	var panel := Control.new()
+	panel.name = node_name
+	panel.visible = false
+	panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	parent.add_child(panel)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(dim)
+	var card := ColorRect.new()
+	card.color = MenuUi.FILL
+	card.position = Vector2(400, 180)
+	card.size = Vector2(480, 360)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(card)
+	var title := Label.new()
+	title.text = heading
+	title.position = Vector2(400, 196)
+	title.size = Vector2(480, 72)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.add_theme_font_override("font", MenuUi.font())
+	title.add_theme_font_size_override("font_size", 48)
+	title.add_theme_color_override("font_color", MenuUi.INK)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(title)
+	return panel
+
+
+func _flow_button(text: String, font_size: int, compact: bool = false) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.focus_mode = Control.FOCUS_NONE
+	button.process_mode = Node.PROCESS_MODE_ALWAYS
+	button.add_theme_font_override("font", MenuUi.font())
+	button.add_theme_font_size_override("font_size", font_size)
+	button.add_theme_color_override("font_color", MenuUi.INK)
+	button.add_theme_color_override("font_hover_color", MenuUi.HOVER_INK)
+	button.add_theme_color_override("font_pressed_color", MenuUi.HOVER_INK)
+	var margin := 0 if compact else 8
+	var border := 3 if compact else 4
+	button.add_theme_stylebox_override("normal", _flow_style(MenuUi.FILL, MenuUi.INK, margin, border))
+	button.add_theme_stylebox_override("hover", _flow_style(MenuUi.HOVER, MenuUi.HOVER_INK, margin, border))
+	button.add_theme_stylebox_override("pressed", _flow_style(MenuUi.HOVER, MenuUi.HOVER_INK, margin, border))
+	button.add_theme_stylebox_override("focus", _flow_style(MenuUi.FILL, MenuUi.INK, margin, border))
+	return button
+
+
+func _flow_style(fill: Color, ink: Color, margin: int, border: int) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = fill
+	box.border_color = ink
+	box.set_border_width_all(border)
+	box.set_content_margin_all(margin)
+	return box
+
+
+func _place_flow_buttons(panel: Control, buttons: Array) -> void:
+	var shown: Array = []
+	for button in buttons:
+		if button.visible:
+			shown.append(button)
+	var width := 320.0
+	var height := 56.0
+	var gap := 16.0
+	var count := shown.size()
+	var stack := float(count) * height + float(maxi(count - 1, 0)) * gap
+	var y := 180.0 + 180.0 - stack * 0.5 + 36.0
+	var x := 400.0 + (480.0 - width) * 0.5
+	for button in shown:
+		button.position = Vector2(x, y)
+		button.size = Vector2(width, height)
+		y += height + gap
+
+
+func _open_pause() -> void:
+	if _success_open or _pause_panel == null or _pause_panel.visible:
+		return
+	_pause_panel.visible = true
+	_pause_button.visible = false
+	get_tree().paused = true
+
+
+func _return_to_battle() -> void:
+	if _pause_panel != null:
+		_pause_panel.visible = false
+	if _pause_button != null:
+		_pause_button.visible = true
+	get_tree().paused = false
+
+
+func _back_to_menu() -> void:
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/levels.tscn")
+
+
+func _next_level() -> void:
+	if campaign_level >= 2:
+		return
+	get_tree().paused = false
+	qte = false
+	brawl = false
+	campaign_level = 2
+	get_tree().change_scene_to_file("res://scenes/duel.tscn")
+
+
+func offer_success() -> void:
+	if _success_open or campaign_level <= 0 or _success_panel == null:
+		return
+	_success_open = true
+	if _pause_panel != null:
+		_pause_panel.visible = false
+	if _pause_button != null:
+		_pause_button.visible = false
+	_next_button.visible = campaign_level < 2
+	var menu := _success_panel.get_node("SuccessMenu")
+	_place_flow_buttons(_success_panel, [_next_button, menu])
+	_success_panel.visible = true
+	get_tree().paused = true
+
+
+func _dismiss_flow() -> void:
+	_success_open = false
+	if _pause_panel != null:
+		_pause_panel.visible = false
+	if _success_panel != null:
+		_success_panel.visible = false
+	if _pause_button != null:
+		_pause_button.visible = true
+	if is_inside_tree():
+		get_tree().paused = false
+
+
+func _flow_unhandled(event: InputEvent) -> void:
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	if event.keycode != KEY_ESCAPE:
+		return
+	if _success_open:
+		_back_to_menu()
+		get_viewport().set_input_as_handled()
+	elif _pause_panel != null and _pause_panel.visible:
+		_return_to_battle()
+		get_viewport().set_input_as_handled()
+
+
 class HpStrip extends Control:
 	var host: Node = null
 
@@ -1914,3 +2121,14 @@ class HpStrip extends Control:
 				return Color(0.90, 0.55, 0.28)
 			_:
 				return Color(0.86, 0.28, 0.24)
+
+
+class FlowCatcher extends Control:
+	var host
+
+	func _ready() -> void:
+		set_process_unhandled_input(true)
+
+	func _unhandled_input(event: InputEvent) -> void:
+		if host != null and host.has_method("_flow_unhandled"):
+			host._flow_unhandled(event)

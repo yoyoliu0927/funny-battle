@@ -401,6 +401,8 @@ func _finish_round() -> void:
 		node.set_process(false)
 	_title.text = "平手" if left.out and right.out else ("失敗" if left.out else "勝利")
 	_refresh_hint()
+	if right.out and not left.out:
+		offer_success()
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -43,6 +43,71 @@ func simulate(arena, seconds: float, fps: int = 60) -> void:
 				prop.free()
 
 
+func _check_flow() -> void:
+	var ko := {
+		"kb": 10,
+		"damage": 5,
+		"stun": 0.1,
+		"hitstop": 0.0,
+		"chain": "",
+		"active": 0.1,
+	}
+	DUEL.campaign_level = 1
+	var spikes = scene("res://scenes/spikes.tscn")
+	var pause_button = spikes.get_node("Flow/FlowRoot/PauseButton")
+	check(pause_button.text == "Pause", "Each level has a pause button")
+	spikes._open_pause()
+	var pause_panel = spikes.get_node("Flow/FlowRoot/PausePanel")
+	check(paused and pause_panel.visible, "Pause opens over the battle")
+	check(pause_panel.get_node("PauseResume").text == "Return to battle", "Pause can return to battle")
+	check(pause_panel.get_node("PauseMenu").text == "Back to menu", "Pause can go back to the menu")
+	spikes._return_to_battle()
+	check(not paused and not pause_panel.visible and pause_button.visible, "Return to battle resumes the fight")
+	spikes.left.out = true
+	spikes._finish_round()
+	check(not spikes.get_node("Flow/FlowRoot/SuccessPanel").visible, "Losing a level does not show success")
+	spikes.free()
+	paused = false
+	DUEL.campaign_level = 1
+	spikes = scene("res://scenes/spikes.tscn")
+	spikes.right.out = true
+	spikes._finish_round()
+	var success = spikes.get_node("Flow/FlowRoot/SuccessPanel")
+	var nxt = success.get_node("NextLevel")
+	check(success.visible and nxt.visible and nxt.text == "Next level", "Level 1 success offers the next level")
+	check(paused, "The success screen holds the battle")
+	spikes.free()
+	paused = false
+	DUEL.campaign_level = 2
+	DUEL.qte = false
+	DUEL.brawl = false
+	var duel_arena = scene("res://scenes/duel.tscn")
+	check(duel_arena.get_node("Flow/FlowRoot/PauseButton") != null, "Level 2 has a pause button")
+	duel_arena.right.hp = 1
+	duel_arena._land_hit(duel_arena.left, duel_arena.right, ko)
+	success = duel_arena.get_node("Flow/FlowRoot/SuccessPanel")
+	nxt = success.get_node("NextLevel")
+	check(duel_arena.right.out and success.visible and not nxt.visible, "Level 2 success does not offer another level")
+	duel_arena._next_level()
+	check(DUEL.campaign_level == 2, "Level 2 does not unlock a later level")
+	duel_arena.free()
+	paused = false
+	DUEL.campaign_level = 2
+	var defeated = scene("res://scenes/duel.tscn")
+	defeated.left.hp = 1
+	defeated._land_hit(defeated.right, defeated.left, ko)
+	check(defeated.left.out and not defeated.get_node("Flow/FlowRoot/SuccessPanel").visible, "Level 2 hides success when the left fighter falls")
+	defeated.free()
+	paused = false
+	DUEL.campaign_level = 0
+	var sandbox = scene("res://scenes/duel.tscn")
+	sandbox.right.hp = 1
+	sandbox._land_hit(sandbox.left, sandbox.right, ko)
+	check(sandbox.right.out and not sandbox.get_node("Flow/FlowRoot/SuccessPanel").visible, "A sandbox knockout does not open the campaign success screen")
+	sandbox.free()
+	paused = false
+
+
 func run_tests() -> void:
 	check(ProjectSettings.get_setting("application/run/main_scene") == "res://scenes/start.tscn", "Start page is the main scene")
 	var start_page = scene("res://scenes/start.tscn")
@@ -57,7 +122,10 @@ func run_tests() -> void:
 	check(levels.LEVEL_ONE == "res://scenes/spikes.tscn", "Level 1 leads to the spike arena")
 	var level_one = levels.get_node("Stage/Level1")
 	check(level_one.shape == "level" and level_one.caption == "1" and not level_one.get_signal_connection_list("pressed").is_empty(), "Level 1 is open")
-	for index in range(2, 11):
+	var level_two = levels.get_node("Stage/Level2")
+	check(levels.LEVEL_TWO == "res://scenes/duel.tscn", "Level 2 leads to the interference duel")
+	check(level_two.shape == "level" and level_two.caption == "2" and not level_two.get_signal_connection_list("pressed").is_empty(), "Level 2 is open")
+	for index in range(3, 11):
 		var locked = levels.get_node("Stage/Level%d" % index)
 		check(locked.shape == "lock" and locked.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Level %d stays locked" % index)
 	check(levels.get_node("Stage/Back") is Button, "Level select can return to the start page")
@@ -302,5 +370,10 @@ func run_tests() -> void:
 	check(arena.left._to >= 432, "Voluntary retreat stops before the spike edge")
 	check(arena._boss_turn == 0 and arena._boss_action == "", "Retry resets the mixed move pattern")
 	arena.free()
+	_check_flow()
+	DUEL.campaign_level = 0
+	DUEL.qte = false
+	DUEL.brawl = false
+	paused = false
 	print("RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

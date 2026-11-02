@@ -3,6 +3,7 @@ extends Control
 const MenuUi := preload("res://scripts/menu_ui.gd")
 const IconButton := preload("res://scripts/icon_button.gd")
 const LEVEL_ONE := "res://scenes/spikes.tscn"
+const LEVEL_TWO := "res://scenes/duel.tscn"
 const COLUMNS := 5
 const COUNT := 10
 const BOX := 120.0
@@ -24,6 +25,11 @@ func _ready() -> void:
 			button.caption = "1"
 			button.font_size = MenuUi.LEVEL_NUMBER_SIZE
 			button.pressed.connect(_on_level_one)
+		elif index == 1:
+			button.shape = "level"
+			button.caption = "2"
+			button.font_size = MenuUi.LEVEL_NUMBER_SIZE
+			button.pressed.connect(_on_level_two)
 		else:
 			button.shape = "lock"
 		_stage.add_child(button)
@@ -60,7 +66,17 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _on_level_one() -> void:
+	var duel := preload("res://scripts/duel.gd")
+	duel.campaign_level = 1
 	get_tree().change_scene_to_file(LEVEL_ONE)
+
+
+func _on_level_two() -> void:
+	var duel := preload("res://scripts/duel.gd")
+	duel.qte = false
+	duel.brawl = false
+	duel.campaign_level = 2
+	get_tree().change_scene_to_file(LEVEL_TWO)
 
 
 func _on_back() -> void:

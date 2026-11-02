@@ -540,6 +540,7 @@ func _build_hud() -> void:
 		var duel := preload("res://scripts/duel.gd")
 		duel.qte = false
 		duel.brawl = false
+		duel.campaign_level = 0
 		get_tree().change_scene_to_file("res://scenes/duel.tscn")
 	)
 	_paint_button(watch, false, true)
@@ -554,6 +555,7 @@ func _build_hud() -> void:
 		var duel := preload("res://scripts/duel.gd")
 		duel.qte = true
 		duel.brawl = false
+		duel.campaign_level = 0
 		get_tree().change_scene_to_file("res://scenes/duel.tscn")
 	)
 	_paint_button(flash, false, true)
@@ -569,6 +571,7 @@ func _build_hud() -> void:
 		duel.qte = false
 		duel.brawl = true
 		duel.brawl_count = 4
+		duel.campaign_level = 0
 		get_tree().change_scene_to_file("res://scenes/duel.tscn")
 	)
 	_paint_button(melee, false, true)
@@ -580,6 +583,8 @@ func _build_hud() -> void:
 	spikes.size = Vector2(220, 48)
 	spikes.focus_mode = Control.FOCUS_NONE
 	spikes.pressed.connect(func() -> void:
+		var duel := preload("res://scripts/duel.gd")
+		duel.campaign_level = 0
 		get_tree().change_scene_to_file("res://scenes/spikes.tscn")
 	)
 	_paint_button(spikes, false, true)
