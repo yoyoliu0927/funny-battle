@@ -93,7 +93,10 @@ func run_tests() -> void:
 	check(not DUEL.qte and not DUEL.brawl, "Spike arena does not inherit the last mode's flags")
 	check(arena._rack.get_script() == load("res://scripts/tool_rack.gd"), "Spike arena uses original prop bar")
 	check(arena._items.size() == 3 and arena._cool.size() == 3, "Exactly three original props")
-	check(arena._cast_buttons.size() == 8, "Original character selectors retained")
+	check(arena._cast_buttons.is_empty(), "Spike arena has no costume row")
+	check(arena._watch_button == null and arena._pace_button == null and arena._hp_button == null and arena._practice_button == null, "Spike arena has no preview or pace row")
+	check(arena._ground_button == null, "Spike arena has no terrain button")
+	check(arena._hint != null and not arena._hint.visible and arena._hint.text == "", "Spike arena hides the prop description")
 	check(arena._title.text == "" and not arena._note.visible, "No added intro or narrative text")
 	check(arena.left.hp < arena.right.hp and arena.left.scale.x < arena.right.scale.x, "Small weak hero faces large boss")
 	check(arena.left.hp == 8 and arena.left.hp_max == 8, "Hero starts with eight health")
@@ -212,6 +215,19 @@ func run_tests() -> void:
 	edge_spring.free()
 	simulate(arena, 12)
 	check(not arena.right.out and not arena._banana_fall and arena.right.position.x >= 360, "Spring alone cannot throw the boss into the pit")
+	arena.free()
+	arena = scene("res://scenes/spikes.tscn")
+	arena.right.position = Vector2(960, 500)
+	arena.right.face_right = false
+	arena.left.position = Vector2(600, 500)
+	var right_spring := DuelProp.new()
+	right_spring.kind = "spring"
+	right_spring.retreat = true
+	arena.add_child(right_spring)
+	check(arena._try_spring(arena.right, right_spring) and arena.right.airborne and arena.right.air_vx > 0.0, "Retreat spring bounces the boss toward the right edge")
+	right_spring.free()
+	simulate(arena, 3)
+	check(arena._ended and arena.right.out and arena.right.position.x > arena._bridge_bounds().y, "Spring can bounce the boss off the right edge")
 	arena.free()
 	arena = scene("res://scenes/spikes.tscn")
 	for tool in 3:

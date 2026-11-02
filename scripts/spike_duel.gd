@@ -70,10 +70,10 @@ func _reset_fighters() -> void:
 	right.face_right = false
 	left.play("idle")
 	right.play("idle")
-	_mark_cast()
 	_apply_pace()
 	_apply_hp_flags()
 	_title.text = ""
+	_hide_arena_chrome()
 	_refresh_hint()
 
 
@@ -266,10 +266,25 @@ func _start_return() -> void:
 	right.go("walk", home, 1.2)
 
 
+func _moving_off_right() -> bool:
+	var edge := _bridge_bounds().y
+	if right.position.x > edge:
+		return true
+	if right.slipping and right._to > edge:
+		return true
+	# A rightward bounce keeps its speed. Once that arc reaches the lip, let it leave.
+	return right.airborne and right.air_vx > 0.0 and right.position.x >= edge - right.air_vx / 60.0 - 1.0
+
+
 func _keep_boss_on_bridge() -> void:
-	# Only an outward banana slip can take this boss over an edge. Ordinary
-	# hits and spring launches retain their feedback but cannot ring it out.
-	if _banana_fall or right.out:
+	# Banana slips can leave either lip. A bounce or slide can also carry the
+	# boss off the right lip. The left lip still rejects a spring by itself.
+	if right.out:
+		return
+	if _moving_off_right():
+		_banana_fall = true
+		return
+	if _banana_fall:
 		return
 	var bounds := _bridge_bounds()
 	var safe_x := clampf(right.position.x, bounds.x + 1, bounds.y - 1)
@@ -389,14 +404,40 @@ func _finish_round() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-		get_tree().change_scene_to_file("res://scenes/levels.tscn")
-		get_viewport().set_input_as_handled()
-		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE:
+			get_tree().change_scene_to_file("res://scenes/levels.tscn")
+			get_viewport().set_input_as_handled()
+			return
+		if event.keycode == KEY_TAB or event.keycode == KEY_G or event.keycode == KEY_P or event.keycode == KEY_T:
+			get_viewport().set_input_as_handled()
+			return
 	super._unhandled_input(event)
 
 
 func _refresh_hint() -> void:
 	super._refresh_hint()
-	if _hint != null and not _preview and _stage != null and not _stage.editing:
-		_hint.text = "1 香蕉　2 彈簧　3 時停　　點地面放置　　R 重來　Esc 返回"
+	if _hint != null:
+		_hint.visible = false
+		_hint.text = ""
+
+
+func _hide_arena_chrome() -> void:
+	for key in _cast_buttons.keys():
+		var button := _cast_buttons[key] as Node
+		if button != null:
+			button.queue_free()
+	_cast_buttons.clear()
+	for node in [_watch_button, _pace_button, _hp_button, _count_button, _practice_button, _ground_button, _preview_row]:
+		if node != null:
+			node.queue_free()
+	_watch_button = null
+	_pace_button = null
+	_hp_button = null
+	_count_button = null
+	_practice_button = null
+	_ground_button = null
+	_preview_row = null
+	if _hint != null:
+		_hint.visible = false
+		_hint.text = ""
