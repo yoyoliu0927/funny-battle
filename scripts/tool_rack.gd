@@ -9,9 +9,14 @@ var _mark_tool := -1
 
 const SLOT := 72.0
 const GAP := 12.0
+const BANANA_ICON := preload("res://assets/props/banana.png")
+const SPRING_ICON := preload("res://assets/props/spring.png")
+const STOPWATCH_ICON := preload("res://assets/ui/icon_stopwatch.png")
+const SPRING_REGION := Rect2(0, 20, 70, 50)
 
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	custom_minimum_size = Vector2(SLOT * 3.0 + GAP * 2.0, SLOT)
 
@@ -64,25 +69,22 @@ func _draw() -> void:
 
 func _draw_icon(index: int, center: Vector2) -> void:
 	if index == 0:
-		var peel := PackedVector2Array([
-			center + Vector2(-18, 4),
-			center + Vector2(16, -8),
-			center + Vector2(12, 8),
-			center + Vector2(-14, 12),
-		])
-		draw_colored_polygon(peel, Color(0.98, 0.84, 0.12))
-		draw_polyline(PackedVector2Array([peel[0], peel[1], peel[2], peel[3], peel[0]]), Color(0.1, 0.1, 0.1), 2.0, true)
+		draw_texture_rect(BANANA_ICON, _fit_rect(BANANA_ICON, center, Vector2(52, 34), Vector2(0, 2)), false)
 		return
 	if index == 1:
-		var ink := Color(0.86, 0.88, 0.92)
-		draw_line(center + Vector2(-16, 8), center + Vector2(-8, -10), ink, 3.0)
-		draw_line(center + Vector2(-8, -10), center + Vector2(0, 8), ink, 3.0)
-		draw_line(center + Vector2(0, 8), center + Vector2(8, -10), ink, 3.0)
-		draw_line(center + Vector2(8, -10), center + Vector2(16, 8), ink, 3.0)
-		draw_line(center + Vector2(-18, 12), center + Vector2(18, 12), Color(0.45, 0.48, 0.54), 3.0)
+		var scale := minf(46.0 / SPRING_REGION.size.x, 32.0 / SPRING_REGION.size.y)
+		var drawn := SPRING_REGION.size * scale
+		var target := Rect2(center - drawn * 0.5 + Vector2(0, 2), drawn)
+		draw_texture_rect_region(SPRING_ICON, target, SPRING_REGION)
 		return
-	draw_arc(center, 16.0, 0.0, TAU, 24, Color(0.55, 0.82, 1.0, 0.9), 3.0)
-	draw_arc(center, 8.0, PI, TAU, 12, Color(0.8, 0.93, 1.0), 3.0)
+	draw_texture_rect(STOPWATCH_ICON, _fit_rect(STOPWATCH_ICON, center, Vector2(44, 44), Vector2(2, 2)), false)
+
+
+func _fit_rect(texture: Texture2D, center: Vector2, max_size: Vector2, offset := Vector2.ZERO) -> Rect2:
+	var size := texture.get_size()
+	var scale := minf(max_size.x / size.x, max_size.y / size.y)
+	var drawn := size * scale
+	return Rect2(center - drawn * 0.5 + offset, drawn)
 
 
 func _draw_cool(center: Vector2, radius: float, remain: float) -> void:

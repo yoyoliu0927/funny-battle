@@ -28,7 +28,7 @@
 
 新增 `scenes/spikes.tscn`、`scripts/spike_duel.gd`、`scripts/spike_stage.gd`；新場景繼承原版 `duel.tscn` 與 `duel.gd`，尖刺地形繼承原版 `stage_edit.gd`。
 
-決鬥場地圖示使用 `assets/props/banana.png` 與 `assets/props/spring.png`，皆為 CC0，來源與授權見 `assets/props/CREDITS.md`。show 模式的香蕉與彈簧仍保留原本的線稿造型。
+決鬥場地圖示使用 `assets/props/banana.png`（香蕉皮）與 `assets/props/spring.png`，道具列的時停圖示使用 `assets/ui/icon_stopwatch.png`，皆為 CC0，來源與授權見 `assets/props/CREDITS.md`。show 模式的香蕉與彈簧仍保留原本的線稿造型。
 
 ## 驗證與打包
 
