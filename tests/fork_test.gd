@@ -290,7 +290,7 @@ func run_tests() -> void:
 	arena.left.position = Vector2(600, 500)
 	var right_spring := DuelProp.new()
 	right_spring.kind = "spring"
-	right_spring.retreat = true
+	right_spring.launch_dir = 1.0
 	arena.add_child(right_spring)
 	check(arena._try_spring(arena.right, right_spring) and arena.right.airborne and arena.right.air_vx > 0.0, "Retreat spring bounces the boss toward the right edge")
 	right_spring.free()
