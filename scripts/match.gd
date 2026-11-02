@@ -573,6 +573,17 @@ func _build_hud() -> void:
 	)
 	_paint_button(melee, false, true)
 	_start_layer.add_child(melee)
+	var spikes := Button.new()
+	spikes.text = "尖刺場地"
+	spikes.position = Vector2(530, 600)
+	spikes.custom_minimum_size = Vector2(220, 48)
+	spikes.size = Vector2(220, 48)
+	spikes.focus_mode = Control.FOCUS_NONE
+	spikes.pressed.connect(func() -> void:
+		get_tree().change_scene_to_file("res://scenes/spikes.tscn")
+	)
+	_paint_button(spikes, false, true)
+	_start_layer.add_child(spikes)
 
 	_end_layer = Control.new()
 	_end_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
