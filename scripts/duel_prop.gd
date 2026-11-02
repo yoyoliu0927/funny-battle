@@ -1,6 +1,12 @@
 class_name DuelProp
 extends Node2D
 
+const SPRING_TILT := 0.62
+const SPRING_SCALE := 0.85
+const BANANA_WIDTH := 62.0
+const SPRING_TEXTURE := preload("res://assets/props/spring.png")
+const BANANA_TEXTURE := preload("res://assets/props/banana.png")
+
 var kind := "peel"
 var wind := -1.0
 var radius := 48.0
@@ -9,20 +15,19 @@ var spent := false
 var life := 2.4
 var armed := true
 var time_scale := 1.0
-var retreat := false
-var launch_dir := -1.0
-var arm_delay := 0.12
+var launch_dir := 0.0
+var arm_delay := 0.0
 var _arm_left := 0.0
 
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	if kind == "stop":
 		z_index = 6
 	elif kind == "spring":
 		z_index = 2
-		if retreat:
-			_arm_left = arm_delay
-			armed = _arm_left <= 0.0
+		_arm_left = arm_delay
+		armed = _arm_left <= 0.0
 	else:
 		z_index = 1
 
@@ -55,28 +60,25 @@ func consume() -> void:
 	queue_free()
 
 
+static func draw_spring(ci: CanvasItem, dir: float, tint: Color = Color.WHITE, origin: Vector2 = Vector2.ZERO) -> void:
+	# 整座彈簧繞著底部旋轉：往上時直立，往左/右時彈簧本體一起倒向該側。
+	ci.draw_set_transform(origin + Vector2(0, 12), dir * SPRING_TILT, Vector2(SPRING_SCALE, SPRING_SCALE))
+	var size := SPRING_TEXTURE.get_size()
+	ci.draw_texture_rect(SPRING_TEXTURE, Rect2(Vector2(-size.x * 0.5, -size.y + 8.0), size), false, tint)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
 func _draw() -> void:
 	if kind == "peel":
 		var fade := 1.0 if life > 0.35 else clampf(life / 0.35, 0.0, 1.0)
-		var peel := PackedVector2Array([
-			Vector2(-28, 4), Vector2(24, -8), Vector2(18, 10), Vector2(-22, 14),
-		])
-		draw_colored_polygon(peel, Color(0.98, 0.84, 0.12, fade))
-		draw_polyline(PackedVector2Array([peel[0], peel[1], peel[2], peel[3], peel[0]]), Color(0.08, 0.08, 0.08, fade), 3.0, true)
+		var size := BANANA_TEXTURE.get_size()
+		var scale := BANANA_WIDTH / size.x
+		var drawn := size * scale
+		draw_texture_rect(BANANA_TEXTURE, Rect2(Vector2(-drawn.x * 0.5, 12.0 - drawn.y), drawn), false, Color(1, 1, 1, fade))
 	elif kind == "spring":
-		var ink := Color(0.25, 0.94, 0.88) if retreat else Color(0.85, 0.88, 0.92)
-		draw_line(Vector2(-26, 10), Vector2(-13, -12), ink, 5.0)
-		draw_line(Vector2(-13, -12), Vector2(0, 10), ink, 5.0)
-		draw_line(Vector2(0, 10), Vector2(13, -12), ink, 5.0)
-		draw_line(Vector2(13, -12), Vector2(26, 10), ink, 5.0)
-		draw_line(Vector2(-30, 12), Vector2(30, 12), Color(0.35, 0.38, 0.42), 4.0)
-		if retreat:
-			var tip := Vector2(launch_dir * 36.0, -22)
-			draw_line(Vector2(-launch_dir * 18.0, -22), tip, ink, 3.0)
-			draw_line(tip, tip + Vector2(-launch_dir * 10.0, -7), ink, 3.0)
-			draw_line(tip, tip + Vector2(-launch_dir * 10.0, 7), ink, 3.0)
-			if not armed:
-				draw_arc(Vector2(0, -2), 40, -PI, -PI + PI * (1.0 - _arm_left / maxf(arm_delay, 0.001)), 20, ink, 2.0)
+		draw_spring(self, launch_dir)
+		if not armed:
+			draw_arc(Vector2(0, -2), 40, -PI, -PI + PI * (1.0 - _arm_left / maxf(arm_delay, 0.001)), 20, Color(0.3, 1.0, 0.9), 2.0)
 	else:
 		var pulse := 0.55 + 0.45 * absf(sin(Time.get_ticks_msec() * 0.012))
 		var ink := Color(0.55, 0.82, 1.0, 0.18 + 0.2 * pulse)

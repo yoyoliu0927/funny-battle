@@ -393,6 +393,12 @@ func chest() -> Vector2:
 	return global_position + Vector2(0, -78)
 
 
+func face_toward(target_x: float) -> void:
+	face_right = target_x >= position.x
+	if _sprite != null:
+		_sprite.flip_h = not face_right
+
+
 func _process(delta: float) -> void:
 	delta *= time_scale
 	if not airborne:
