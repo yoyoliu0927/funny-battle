@@ -44,7 +44,24 @@ func simulate(arena, seconds: float, fps: int = 60) -> void:
 
 
 func run_tests() -> void:
-	check(ProjectSettings.get_setting("application/run/main_scene") == "res://scenes/main.tscn", "Original menu is the main scene")
+	check(ProjectSettings.get_setting("application/run/main_scene") == "res://scenes/start.tscn", "Start page is the main scene")
+	var start_page = scene("res://scenes/start.tscn")
+	var play = start_page.get_node("Stage/Play")
+	var tutorial = start_page.get_node("Stage/Tutorial")
+	check(play is Button and not play.get_signal_connection_list("pressed").is_empty(), "Play opens level selection")
+	check(tutorial is Button and tutorial.caption == "Tutorial", "Tutorial button is present")
+	check(start_page.get_node("Background") is TextureRect, "Start page uses the beach background")
+	start_page._tutorial_stub()
+	start_page.free()
+	var levels = scene("res://scenes/levels.tscn")
+	check(levels.LEVEL_ONE == "res://scenes/spikes.tscn", "Level 1 leads to the spike arena")
+	var level_one = levels.get_node("Stage/Level1")
+	check(level_one.shape == "level" and level_one.caption == "1" and not level_one.get_signal_connection_list("pressed").is_empty(), "Level 1 is open")
+	for index in range(2, 11):
+		var locked = levels.get_node("Stage/Level%d" % index)
+		check(locked.shape == "lock" and locked.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Level %d stays locked" % index)
+	check(levels.get_node("Stage/Back") is Button, "Level select can return to the start page")
+	levels.free()
 	var menu = scene("res://scenes/main.tscn")
 	var buttons: Dictionary = {}
 	for child in menu._start_layer.get_children():

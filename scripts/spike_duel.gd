@@ -388,6 +388,14 @@ func _finish_round() -> void:
 	_refresh_hint()
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		get_tree().change_scene_to_file("res://scenes/levels.tscn")
+		get_viewport().set_input_as_handled()
+		return
+	super._unhandled_input(event)
+
+
 func _refresh_hint() -> void:
 	super._refresh_hint()
 	if _hint != null and not _preview and _stage != null and not _stage.editing:
